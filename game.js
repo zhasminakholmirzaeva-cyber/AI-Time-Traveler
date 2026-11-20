@@ -24,26 +24,13 @@ const ACTIONS=[
  [['Уақыт жүйесін толық қалпына келтіру',35,85,32,15],['Кристалдарды біріктіру',20,65,30,8],['Уақыт ағынын тұрақтандыру',25,80,28,12]]
 ].map((row,i)=>row.map((v,j)=>({id:'a'+i+'_'+j,label:v[0],cost:v[1],p:[v[2]/100,(100-v[2])/100*.65,(100-v[2])/100*.35],delta:[0,v[3],v[4]]})));
 const $=id=>document.getElementById(id),clamp=n=>Math.max(0,Math.min(100,Math.round(n)));
-function validateInitialState(values){
- const keys=['budget','energy','happiness'];
- for(const key of keys){const value=values[key];if(typeof value!=='number'||!Number.isInteger(value)||value<0||value>100)throw new RangeError(key+' must be an integer from 0 to 100');}
- return {budget:values.budget,energy:values.energy,happiness:values.happiness};
-}
-function initialStateFromForm(){
- const fields={budget:$('initialBudget'),energy:$('initialEnergy'),happiness:$('initialHappiness')};
- const raw={};
- for(const [key,field] of Object.entries(fields)){if(!field.value.trim())throw new RangeError('Барлық үш параметрді толтыр.');raw[key]=Number(field.value);}
- return validateInitialState(raw);
-}
-function startWithSettings(){
- try{const initial=initialStateFromForm();$('settingsError').classList.add('hidden');restart(initial);}
- catch(error){$('settingsError').textContent='Қате: 0 мен 100 аралығындағы бүтін сандарды енгіз.';$('settingsError').classList.remove('hidden');}
-}
+function validateInitialState(s){for(const k of ['budget','energy','happiness']){if(!Number.isInteger(s[k])||s[k]<0||s[k]>100)throw new RangeError(k+' must be an integer between 0 and 100');}return {...s};}
+function startWithSettings(){try{const ids=['initialBudget','initialEnergy','initialHappiness'];if(ids.some(id=>!$(id).value.trim()))throw Error('empty');const v={budget:Number($('initialBudget').value),energy:Number($('initialEnergy').value),happiness:Number($('initialHappiness').value)};restart(validateInitialState(v));$('settingsError').textContent='';}catch(e){$('settingsError').textContent='Қате: барлық мәндер 0–100 аралығындағы бүтін сандар болуы керек.';}}
 function transition(s,a,outcome){const factor=[1,.48,-.4][outcome];return {budget:clamp(s.budget-a.cost),energy:clamp(s.energy+a.delta[1]*factor),happiness:clamp(s.happiness+a.delta[2]*factor-(outcome===2?5:0))};}
 function reward(before,after){return .55*(after.energy-before.energy)+.35*(after.happiness-before.happiness)+.10*(after.budget-before.budget);}
 function expectedUtility(s,a){return a.p.reduce((sum,p,i)=>sum+p*reward(s,transition(s,a,i)),0);}
 function rankActions(s,actions){return actions.map(action=>({action,score:expectedUtility(s,action)})).sort((a,b)=>b.score-a.score);}
-function agentPolicy(s,actions){const priority=s.energy<65?'energy':s.happiness<60?'happiness':'budget';const available=actions.filter(a=>a.cost<=s.budget);const score=a=>priority==='budget'?-a.cost:(priority==='energy'?a.delta[1]:a.delta[2])*a.p[0]/(a.cost+10);return {priority,action:[...available].sort((a,b)=>score(b)-score(a))[0]||null};}
+function agentPolicy(s,actions){const priority=s.energy<65?'energy':s.happiness<60?'happiness':'budget';const available=actions.filter(a=>a.cost<=s.budget);const score=a=>priority==='budget'?-a.cost:(priority==='energy'?a.delta[1]:a.delta[2])*a.p[0]/(a.cost+10);return {priority,action:available.sort((a,b)=>score(b)-score(a))[0]||null};}
 function sampleOutcome(a,r=Math.random()){return r<a.p[0]?0:r<a.p[0]+a.p[1]?1:2;}
 function puzzleCheck(p,answer){return Number(answer)===p.correct;}
 function applyPuzzlePenalty(s,wrongCount){return wrongCount===1?{...s}:{...s,energy:clamp(s.energy-4),happiness:clamp(s.happiness-2)};}
@@ -51,7 +38,6 @@ function hazard(s,era,roll=Math.random()){if(roll>=.28)return {state:{...s},mess
 function statHTML(s){return [['💰 Бюджет',s.budget],['⚡ Ресурс',s.energy],['😊 Қанағаттану',s.happiness]].map(([k,v])=>`<div class="stat"><span>${k}</span><b>${v}%</b></div>`).join('');}
 function calculateEnding(shards,stability,allCorrect){if(shards===3&&stability>=70&&allCorrect)return '🏆 Алтын финал — Уақыт сақшысы';if(shards===3&&stability>=45)return '✨ Күміс финал — Болашақ сақталды';if(shards>=2&&stability>=35)return '🌀 Құпия финал — Жаңа уақыт сызығы';return '⌛ Сәтсіз финал — Уақыт бұзылысы';}
 let index=0,state={budget:100,energy:50,happiness:60},puzzleSolved=false,wrong=0,selected=null,pending=null,rewinds=2,shards=0,chapterResults=[],journal=[],correctFirstTry=0,warpBusy=false,speechTimer=null,dialogueStep=0,dialogueActive=false;
-let secondChanceUsed=false;
 const STORY_DIALOGUES=[[['aidar', 'Біз 1850 жылға жеттік! Бірақ мұнара сағаты тоқтап қалыпты.'], ['ali', 'Шеберхананың есігі ашық екен. Біреу механизмнің негізгі бөлшегін алып кеткен сияқты.'], ['chrono', 'Талдауым бойынша, сағатты іске қосу үшін 12 тісті темір бөлшек қажет.'], ['aidar', 'Мұнда үш бөлшек бар. Қайсысы дұрыс екенін белгілеріне қарап анықтайық.'], ['ali', 'Қателеспейік. Әуелі дәлелдерді салыстырып, содан кейін жөндеу жоспарын таңдаймыз.']], [['ali', 'Дұрыс бөлшекті таптық. Енді оны мұнараның ішіндегі тісті жүйеге орнату керек.'], ['aidar', 'Бірінші дөңгелек сағат тілімен айналып тұр. Қалғандары қалай қозғалады?'], ['chrono', 'Жанасқан екі тісті дөңгелек қарама-қарсы бағытта айналады. Осы ережені қолдан.'], ['ali', 'Үшінші дөңгелектің бағытын анықтасақ, механизмді қауіпсіз іске қоса аламыз.'], ['aidar', 'Есептеп көрейік, содан кейін жөндеу тәсілін таңдаймыз.']], [['aidar', 'Сағат мұнарасы қозғалды! Бірақ порталдың жарығы бірден әлсіреді.'], ['chrono', 'Уақыт құлпы іске қосылған. Экранда 2, 4, 8 және белгісіз сан көрініп тұр.'], ['ali', 'Сандардың арасындағы заңдылықты табуымыз керек.'], ['aidar', 'Құлыпты ашсақ, бірінші уақыт кристалына жетеміз.'], ['chrono', 'Асықпаңдар. Дұрыс кодтан кейін мұнара мен порталдың тұрақтылығын бірге бағалаймыз.']], [['aidar', '2050 жыл! Қала жарқырап тұр, бірақ кейбір аудандар қараңғы екен.'], ['ali', 'Тұрғындарға электр қуаты жетіспейді. Біз екі станцияны ғана қоса аламыз.'], ['chrono', 'Қалаға кемінде 80 энергия бірлігі қажет. Әр станцияның құны әртүрлі.'], ['aidar', 'Энергия жеткілікті әрі шығын ең аз болатын жұпты табайық.'], ['ali', 'Одан кейін қала үшін қандай инвестиция тиімді екенін шешеміз.']], [['ali', 'Электр желісінде тағы да ақау! Бірнеше аудан қуатсыз қалды.'], ['aidar', 'Бұл кездейсоқтық па, әлде Нокстың әрекеті ме?'], ['chrono', 'Диагностика аяқталды: A және C модульдері істеп тұр, B модулі жауап бермейді.'], ['ali', 'Ақаулы бөлікті дұрыс тапсақ, жөндеуге кететін ресурсты үнемдейміз.'], ['aidar', 'Онда модульді анықтап, апатқа қарсы жоспар құрамыз.']], [['aidar', 'Қала қайта жарықтанды, бірақ мәселе толық шешілген жоқ.'], ['ali', 'Енді екі ұзақ мерзімді жоба таңдауымыз керек. Бюджет шектеулі.'], ['chrono', 'Үш жоба бар. Олардың құны мен пайдасын салыстыру қажет.'], ['aidar', 'Қай жұп ең көп пайда әкеледі? Есепті дәл шығарайық.'], ['ali', 'Сосын болашақ қаланың дамуына жауап беретін соңғы шешімді қабылдаймыз.']], [['aidar', '2200 жылға келдік. Ғарыш қаласының қорғаныс шамдары жыпылықтап тұр.'], ['ali', 'Оттегі, энергия және қорғаныс жүйелері бір-біріне тәуелді екен.'], ['chrono', 'Жүйелерді қате ретпен іске қосу тұрақтылықты төмендетеді.'], ['aidar', 'Алдымен қай жүйе қосылуы керек?'], ['ali', 'Ретті дұрыс анықтап, содан кейін жөндеуге ресурстар бөлеміз.']], [['ali', 'Біздің алдымызда болашақтың үш түрлі жоспары тұр.'], ['aidar', 'Ең қауіпсізі міндетті түрде ең пайдалысы ма?'], ['chrono', 'Жоқ. Күтілетін пайданы есептеу үшін сәттілік ықтималдығын ықтимал пайдаға көбейтеміз.'], ['ali', 'Үш жоспарды да салыстырып, ең жоғары күтілетін пайданы табайық.'], ['aidar', 'Содан кейін тәуекел мен ресурсты ескеріп, өз таңдауымызды жасаймыз.']], [['aidar', 'Міне, соңғы портал! Нокс уақыт кристалдарының орнын ауыстырып жіберген.'], ['ali', 'Үш кристалл бар: көк, алтын және күлгін. Қайсысы бірінші тұрады?'], ['chrono', 'Белгілерді оқы: алтын көктен кейін, ал күлгін алтыннан кейін орналасады.'], ['aidar', 'Ретін анықтасақ, уақыт ағынын қалпына келтіруге мүмкіндік туады.'], ['ali', 'Бұл — соңғы сынақ. Алдыңғы шешімдеріміздің бәрі нәтижеге әсер етеді.'], ['chrono', 'Дайын болсаңдар, кристалдарды орналастырып, соңғы стратегиялық шешімді қабылдайық.']]];
 const VOICES={aidar:['Әли, бұл құпияны бірге шешеміз!','Бізде бір ғана мүмкіндік емес, бірақ уақыт аз!'],ali:['Айдар, дәлелдерді қайта қарап шығайық.','Қарапайым жауап әрдайым тиімді емес!'],chrono:['Ықтималдықтарды талдап жатырмын.','Есептеуді аяқтадым. Қай шешімді таңдаймыз?']};
 function speak(who='chrono',line){const scene=$('scene');clearTimeout(speechTimer);scene.classList.remove('talking-aidar','talking-ali','talking-chrono');scene.classList.add('talking-'+who);const names={aidar:'Айдар',ali:'Әли',chrono:'Хроно'};const msg=line||VOICES[who][Math.floor(Math.random()*VOICES[who].length)];$('sceneSpeech').textContent=names[who]+': '+msg;$('dialog').textContent=names[who]+': «'+msg+'»';if(!dialogueActive)speechTimer=setTimeout(()=>scene.classList.remove('talking-'+who),3200);}
@@ -90,74 +76,14 @@ function walkToMission(){
   window.scrollTo({top:0,behavior:'smooth'});
  },1500);
 }
-function loadMission(){puzzleSolved=false;wrong=0;selected=null;pending=null;const era=Math.floor(index/3);$('game').classList.remove('hidden');$('start').classList.add('hidden');$('ending').classList.add('hidden');$('outcome').classList.add('hidden');$('eraTag').textContent=PUZZLES[index].year+' жыл';$('scene').className='scene '+(era===0?'era1850':era===2?'era2200':'');$('sceneLabel').textContent=PUZZLES[index].year+' · '+PUZZLES[index].title;dialogueStep=0;dialogueActive=true;$('storyDialogue').classList.remove('hidden');$('missionContent').classList.add('hidden');render();if(!agentPolicy(state,ACTIONS[index]).action)showGameOver();}
+function loadMission(){puzzleSolved=false;wrong=0;selected=null;pending=null;const era=Math.floor(index/3);$('game').classList.remove('hidden');$('start').classList.add('hidden');$('ending').classList.add('hidden');$('outcome').classList.add('hidden');$('eraTag').textContent=PUZZLES[index].year+' жыл';$('scene').className='scene '+(era===0?'era1850':era===2?'era2200':'');$('sceneLabel').textContent=PUZZLES[index].year+' · '+PUZZLES[index].title;dialogueStep=0;dialogueActive=true;$('storyDialogue').classList.remove('hidden');$('missionContent').classList.add('hidden');render();}
 function puzzleMarkup(p){let table=p.table?'<table>'+p.table.map((r,i)=>'<tr>'+r.map(c=>i?'<td>'+c+'</td>':'<th>'+c+'</th>').join('')+'</tr>').join('')+'</table>':'';return `<div class="mission-chip">🔐 1-кезең · Логикалық жұмбақ</div><h2>${p.title}</h2><p>${p.story}</p>${table}<p><b>${p.question}</b></p><div class="puzzle-options">${p.options.map((o,i)=>`<button class="puzzle-option ${selected===i?'selected':''}" data-puzzle="${i}" ${puzzleSolved?'disabled':''}>${i+1}. ${o}</button>`).join('')}</div><div class="puzzle-feedback" aria-live="polite">${puzzleSolved?'✅ Дұрыс! '+p.explain+' Енді төмендегі стратегиялық шешімді таңда.':wrong===0?'Жауапты таңда. Қате жауаптың алғашқысы тегін, кейін ресурс азаяды.':'❌ Қате. '+p.hint+' Қателер: '+wrong}</div>`;}
-function render(){const p=PUZZLES[index],actions=ACTIONS[index];$('missionTitle').textContent=`${p.year} жыл — ${p.title}`;$('turnTag').textContent=`Миссия ${index+1}/9 · ↶ ${rewinds}`;$('goalText').textContent=`🎯 Жұмбақты шеш → стратегиялық таңдау жаса. Бюджет ${state.budget}%. Әр үшінші миссиядан соң кристалл алу үшін ресурс ≥ 35%, қанағаттану ≥ 35% қажет. Кристалдар: ${shards}/3`;if(!dialogueActive)$('dialog').textContent='Хроно: «'+p.story+'»';$('stats').innerHTML=statHTML(state);$('puzzlePanel').innerHTML=puzzleMarkup(p);document.querySelectorAll('[data-puzzle]').forEach(btn=>btn.addEventListener('click',()=>answerPuzzle(Number(btn.dataset.puzzle))));$('decisionHeading').textContent=puzzleSolved?'2-кезең · Стратегиялық шешім':'2-кезең · Алдымен жұмбақты шеш';$('decisionStatus').textContent=puzzleSolved
- ? `Қалған бюджет: ${state.budget}%. ${pending?'Таңдалған әрекет: '+pending.a.label+'.':'Әрекет әлі таңдалған жоқ.'}`
- : '';
-$('choices').innerHTML=actions.map(action=>{
- const shortfall=action.cost-state.budget;
- const showShortfall=puzzleSolved&&!pending&&shortfall>0;
- const disabled=!puzzleSolved||pending||shortfall>0;
- return `<button class="btn choice${showShortfall?' unaffordable':''}" data-action="${action.id}" ${disabled?'disabled':''}>
-  ${action.label}<span class="small choice-detail">Құны: ${action.cost}% · Сәттілік: ${Math.round(action.p[0]*100)}%</span>
-  ${showShortfall?`<span class="small choice-detail budget-shortfall">Бюджет жетпейді · тағы ${shortfall} пайыздық тармақ керек</span>`:''}
- </button>`;
-}).join('');
-document.querySelectorAll('[data-action]').forEach(btn=>btn.addEventListener('click',()=>choose(btn.dataset.action)));const agent=agentPolicy(state,actions);$('agentText').innerHTML=`<p>Бақылау: ресурс <b>${state.energy}%</b>, бюджет <b>${state.budget}%</b>.</p><p>Басымдық: <b>${{energy:'ресурс',happiness:'қанағаттану',budget:'бюджет'}[agent.priority]}</b>.</p><p class="notice">Ұсыныс: ${agent.action?agent.action.label:'Қолжетімді әрекет жоқ'}</p><p class="small">Ереже: ресурс 65-тен төмен болса — ресурс; әйтпесе қанағаттану 60-тан төмен болса — қанағаттану; қалған жағдайда — шығынды үнемдеу. Ұсыныс тек қолжетімді әрекеттерден алынады.</p>`;$('decisionTable').innerHTML=rankActions(state,actions.filter(a=>a.cost<=state.budget)).map((r,i)=>`<div class="line">${i+1}. ${r.action.label}: <b>${r.score.toFixed(2)}</b></div>`).join('')||'Бюджет жеткіліксіз.';$('history').innerHTML=journal.length?journal.slice(-12).map(x=>'<div class="line">'+x+'</div>').join(''):'Саяхат енді басталды.';}
+function render(){const p=PUZZLES[index],actions=ACTIONS[index];$('missionTitle').textContent=`${p.year} жыл — ${p.title}`;$('turnTag').textContent=`Миссия ${index+1}/9 · ↶ ${rewinds}`;$('goalText').textContent=`🎯 Жұмбақты шеш → стратегиялық таңдау жаса. Бюджет ${state.budget}%. Әр үшінші миссиядан соң кристалл алу үшін ресурс ≥ 35%, қанағаттану ≥ 35% қажет. Кристалдар: ${shards}/3`;if(!dialogueActive)$('dialog').textContent='Хроно: «'+p.story+'»';$('stats').innerHTML=statHTML(state);$('puzzlePanel').innerHTML=puzzleMarkup(p);document.querySelectorAll('[data-puzzle]').forEach(btn=>btn.addEventListener('click',()=>answerPuzzle(Number(btn.dataset.puzzle))));$('decisionHeading').textContent=puzzleSolved?'2-кезең · Стратегиялық шешім':'2-кезең · Алдымен жұмбақты шеш';$('choices').innerHTML=actions.map(a=>`<button class="btn choice" data-action="${a.id}" ${!puzzleSolved||pending||a.cost>state.budget?'disabled':''}>${a.label}<div class="small">Құны: ${a.cost}% · Сәттілік: ${Math.round(a.p[0]*100)}%</div></button>`).join('');document.querySelectorAll('[data-action]').forEach(btn=>btn.addEventListener('click',()=>choose(btn.dataset.action)));const agent=agentPolicy(state,actions);$('agentText').innerHTML=`<p>Бақылау: ресурс <b>${state.energy}%</b>, бюджет <b>${state.budget}%</b>.</p><p>Басымдық: <b>${{energy:'ресурс',happiness:'қанағаттану',budget:'бюджет'}[agent.priority]}</b>.</p><p class="notice">Ұсыныс: ${agent.action?agent.action.label:'Қолжетімді әрекет жоқ'}</p>`;$('decisionTable').innerHTML=rankActions(state,actions.filter(a=>a.cost<=state.budget)).map((r,i)=>`<div class="line">${i+1}. ${r.action.label}: <b>${r.score.toFixed(2)}</b></div>`).join('')||'Бюджет жеткіліксіз.';$('history').innerHTML=journal.length?journal.slice(-12).map(x=>'<div class="line">'+x+'</div>').join(''):'Саяхат енді басталды.';}
 function answerPuzzle(n){if(dialogueActive||puzzleSolved||pending)return;const p=PUZZLES[index];selected=n;if(puzzleCheck(p,n)){puzzleSolved=true;if(wrong===0)correctFirstTry++;journal.push('🧩 '+(index+1)+'-миссия: жұмбақ шешілді ('+(wrong+1)+' әрекет)');speak('ali','Таптық! '+p.explain);}else{wrong++;state=applyPuzzlePenalty(state,wrong);speak('chrono',wrong===1?'Жауап сәйкес емес. Кеңес: '+p.hint:'Тағы қате. Ресурс 4, қанағаттану 2 ұпайға азайды.');}render();}
 function choose(id){if(!puzzleSolved||pending)return;const a=ACTIONS[index].find(x=>x.id===id);if(!a||a.cost>state.budget)return;const before={...state},outcome=sampleOutcome(a);state=transition(state,a,outcome);const event=hazard(state,Math.floor(index/3));state=event.state;pending={before,a,outcome};const names=['Сәтті','Ішінара сәтті','Сәтсіз'];$('mdpDetails').innerHTML=`<p><b>${a.label}</b> · ықтимал нәтижелер:</p>`+a.p.map((v,i)=>`<div class="line">${names[i]} — ${(v*100).toFixed(1)}%<div class="prob"><div class="fill" style="width:${v*100}%"></div></div></div>`).join('');$('outcomeText').textContent=`${names[outcome]} нәтиже. Бюджет ${before.budget} → ${state.budget}, ресурс ${before.energy} → ${state.energy}, қанағаттану ${before.happiness} → ${state.happiness}. ${event.message}`;$('outcome').classList.remove('hidden');$('undoBtn').disabled=rewinds<=0;$('undoBtn').textContent='↶ Қайтару ('+rewinds+')';$('nextBtn').textContent=index===8?'Финалды көру →':index%3===2?'Келесі дәуір →':'Келесі миссия →';render();$('outcome').scrollIntoView({behavior:'smooth',block:'nearest'});}
 function next(){if(!pending)return;journal.push('🎲 '+(index+1)+'-миссия: '+pending.a.label+' — '+['сәтті','ішінара','сәтсіз'][pending.outcome]);pending=null;const endOfEra=index%3===2;if(endOfEra){const passed=state.energy>=35&&state.happiness>=35&&state.budget>=0;if(passed)shards++;chapterResults.push({year:PUZZLES[index].year,passed,state:{...state}});if(!passed){state={...state,energy:clamp(state.energy-8),happiness:clamp(state.happiness-7)};}if(index!==8){state={budget:clamp(state.budget+45),energy:clamp(state.energy+20),happiness:clamp(state.happiness+12)};}}index++;if(index>=9){showEnding();return;}if(index%3===0){warpToMission();}else{walkToMission();}}
 function undo(){if(!pending||rewinds<=0)return;rewinds--;state={...pending.before};pending=null;$('outcome').classList.add('hidden');render();}
-function showGameOver(wrongAnswer=false){
- const dialog=$('gameOver');
- $('gameOverActions').classList.remove('hidden');
- $('secondChancePuzzle').classList.add('hidden');
- $('secondChanceBtn').classList.toggle('hidden',secondChanceUsed);
- const reason=wrongAnswer?'Жауап қате. Дұрыс жауап — В.':'Бюджет ешбір әрекетке жетпейді.';
- $('gameOverReason').textContent=`${index+1}-миссия · Бюджет ${state.budget}%. ${reason}`;
- if(!dialog.open)dialog.showModal();
- $('gameOverRestart').focus();
-}
-function openSecondChance(){
- if(secondChanceUsed||!$('gameOver').open)return;
- secondChanceUsed=true;
- $('gameOverActions').classList.add('hidden');
- $('secondChancePuzzle').classList.remove('hidden');
- $('secondChanceHeading').focus();
-}
-function answerSecondChance(button){
- const dialog=$('gameOver');
- if(!dialog.open||$('secondChancePuzzle').classList.contains('hidden'))return;
- if(button.dataset.rescue!=='correct'){
-  showGameOver(true);
-  return;
- }
- const budgetBefore=state.budget;
- state.budget=Math.min(...ACTIONS[index].map(action=>action.cost));
- journal.push(`🔓 Екінші мүмкіндік · ${index+1}-миссия: бюджет ${budgetBefore}% → ${state.budget}%.`);
- dialog.close();
- render();
- $('dialogueNext').focus();
-}
-function showEnding(budgetLoss=false){const stability=Math.round((state.energy+state.happiness)/2),ending=calculateEnding(shards,stability,correctFirstTry===9);$('game').classList.add('hidden');$('ending').classList.remove('hidden');$('endingTitle').textContent=budgetLoss?'Ойын аяқталды — бюджет жеткіліксіз':ending;$('eraTag').textContent='Саяхат аяқталды';$('summary').innerHTML=`<p>🔮 Уақыт кристалдары: <b>${shards}/3</b> · Жұмбақтарды алғашқы әрекетте шешу: <b>${correctFirstTry}/9</b> · Тұрақтылық: <b>${stability}%</b></p>`+chapterResults.map(r=>`<div class="card"><h2>${r.passed?'✅':'⚠️'} ${r.year} жыл</h2><div class="stats">${statHTML(r.state)}</div></div>`).join('');if(budgetLoss){
- $('summary').insertAdjacentHTML('afterbegin',`<p>Саяхат ${index+1}-миссияда тоқтады.</p><div class="stats">${statHTML(state)}</div>`);
-}
-$('endingTitle').focus();
-window.scrollTo({top:0});}
-function restart(initial){if(warpBusy)return;if($('gameOver').open)$('gameOver').close();secondChanceUsed=false;index=0;state=initial?validateInitialState(initial):validateInitialState({budget:Number($('initialBudget').value),energy:Number($('initialEnergy').value),happiness:Number($('initialHappiness').value)});puzzleSolved=false;wrong=0;selected=null;pending=null;rewinds=2;shards=0;chapterResults=[];journal=[];correctFirstTry=0;warpToMission();}
+function showEnding(){const stability=Math.round((state.energy+state.happiness)/2),ending=calculateEnding(shards,stability,correctFirstTry===9);$('game').classList.add('hidden');$('ending').classList.remove('hidden');$('endingTitle').textContent=ending;$('eraTag').textContent='Саяхат аяқталды';$('summary').innerHTML=`<p>🔮 Уақыт кристалдары: <b>${shards}/3</b> · Жұмбақтарды алғашқы әрекетте шешу: <b>${correctFirstTry}/9</b> · Тұрақтылық: <b>${stability}%</b></p>`+chapterResults.map(r=>`<div class="card"><h2>${r.passed?'✅':'⚠️'} ${r.year} жыл</h2><div class="stats">${statHTML(r.state)}</div></div>`).join('');window.scrollTo({top:0});}
+function restart(initial){index=0;state=initial||{budget:100,energy:50,happiness:60};puzzleSolved=false;wrong=0;selected=null;pending=null;rewinds=2;shards=0;chapterResults=[];journal=[];correctFirstTry=0;warpToMission();}
 if(typeof document!=='undefined'){document.querySelectorAll('[data-speaker]').forEach(b=>b.addEventListener('click',()=>speak(b.dataset.speaker)));$('startBtn').addEventListener('click',startWithSettings);$('nextBtn').addEventListener('click',next);$('undoBtn').addEventListener('click',undo);$('restartBtn').addEventListener('click',startWithSettings);$('dialogueNext').addEventListener('click',advanceDialogue);$('dialogueBack').addEventListener('click',backDialogue);$('dialogueReplay').addEventListener('click',replayDialogue);}
-if(typeof document!=='undefined'){
- const gameOver=$('gameOver');
- gameOver.addEventListener('cancel',event=>event.preventDefault());
- $('gameOverRestart').addEventListener('click',startWithSettings);
- $('gameOverResults').addEventListener('click',()=>{
-  gameOver.close();
-  showEnding(true);
- });
- $('secondChanceBtn').addEventListener('click',openSecondChance);
- gameOver.querySelectorAll('[data-rescue]').forEach(button=>{
-  button.addEventListener('click',()=>answerSecondChance(button));
- });
-}
 if(typeof module!=='undefined')module.exports={PUZZLES,ACTIONS,STORY_DIALOGUES,transition,reward,expectedUtility,rankActions,agentPolicy,sampleOutcome,puzzleCheck,applyPuzzlePenalty,hazard,calculateEnding,validateInitialState};
