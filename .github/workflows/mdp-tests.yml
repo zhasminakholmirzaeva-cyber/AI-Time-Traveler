@@ -1,0 +1,22 @@
+
+name: MDP Automated Tests
+
+on:
+  push:
+    branches: [mdp-testing]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run MDP tests
+        run: node --test tests/mdp.test.js
